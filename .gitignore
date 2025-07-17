@@ -1,0 +1,17 @@
+# Ignore training results and checkpoints
+results/
+
+# Ignore environment variables file
+.env
+
+# Ignore Python virtual environment
+.venv/
+
+# Ignore archive folder
+archive/
+
+# Ignore Python bytecode
+__pycache__/
+
+# Ignore trained models
+/models/
