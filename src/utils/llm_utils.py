@@ -85,24 +85,26 @@ def get_model_size_mb(model_path):
     return 0
 
 def load_model_and_tokenizer():
-    """Loads the pre-trained model and tokenizer."""
-    print("Loading model and tokenizer...")
-    _, vocab_size = init_tokenizer()
+    # Initialize tokenizer
+    tokenizer, vocab_size = init_tokenizer()
+
+    # Initialize model
     model = TinyLLM(vocab_size)
-    
+    model.to(DEVICE)
+
     if os.path.exists(MODEL_PATH):
-        try:
-            model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-            model.to(DEVICE)
-            model.eval()
-            print("Model loaded successfully.")
-            return model, vocab_size
-        except Exception as e:
-            print(f"Error loading model: {e}")
-            return None, None
+        print(f"Loading model from checkpoint: {MODEL_PATH}")
+        checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+
+        if "model" in checkpoint:
+            model.load_state_dict(checkpoint["model"])  # ✅ Proper load for full checkpoint
+        else:
+            model.load_state_dict(checkpoint)  # In case it’s a bare state_dict
     else:
-        print(f"No trained model found at {MODEL_PATH}.")
-        return None, None
+        print("No checkpoint found. Returning untrained model.")
+
+    return model, vocab_size
+
 
 @torch.no_grad()
 def generate_text_from_model(

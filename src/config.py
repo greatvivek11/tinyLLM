@@ -3,22 +3,23 @@ import os
 
 # --- Configuration Parameters ---
 BLOCK_SIZE = 256
-BATCH_SIZE = 32
-D_MODEL = 256
-NUM_HEADS = 8
-NUM_LAYERS = 8
+BATCH_SIZE = 64
+D_MODEL = 128
+NUM_HEADS = 4
+NUM_LAYERS = 6
 DROPOUT = 0.1
 
-LEARNING_RATE = 1e-4
-MAX_ITERS = 10000 # Increased for more training
+LEARNING_RATE = 5e-4
+MAX_ITERS = 20000 # Increased for more training
 
 # Learning Rate Scheduler and Gradient Clipping Parameters
-WARMUP_ITERS = 100
+WARMUP_ITERS = MAX_ITERS//100 # int: Linear LR warmup for first 1% of training
 LR_DECAY_ITERS = MAX_ITERS # Should be equal to MAX_ITERS for full decay
 MIN_LR = 1e-5 # Minimum learning rate after decay
 GRAD_CLIP = 1.0 # Gradient clipping threshold
 
-EVAL_INTERVAL = 500
+# --- Evaluation Parameters ---
+EVAL_INTERVAL = 1000
 EVAL_ITERS = 200
 EVAL_BATCHES_PERPLEXITY = 100 # Number of batches to use for perplexity calculation
 
@@ -28,6 +29,9 @@ TEMPERATURE = 0.7
 TOP_K = 50
 TOP_P = 0.95
 REPETITION_PENALTY = 1.2
+
+CHECKPOINT_INTERVAL = 1000  # Save model every 1k steps
+
 
 # --- Device Configuration ---
 if torch.backends.mps.is_available():

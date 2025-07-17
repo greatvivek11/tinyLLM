@@ -50,9 +50,10 @@ def get_batch(split, train_data, val_data):
         y = torch.stack([data[i+1:i+BLOCK_SIZE+1] for i in ix])
     else: # Handle Hugging Face Dataset (dictionary-like)
         ix = torch.randint(len(data), (BATCH_SIZE,))
-        batch = [data[i.item()] for i in ix]
-        x = torch.stack([item['input_ids'] for item in batch])
-        y = torch.stack([item['labels'] for item in batch])
+        batch_items = [data[i.item()] for i in ix]
+        x_full = torch.stack([item['input_ids'] for item in batch_items])
+        x = x_full[:, :-1].contiguous()
+        y = x_full[:, 1:].contiguous()
     
     x, y = x.to(DEVICE), y.to(DEVICE)
     return x, y
@@ -79,11 +80,10 @@ def load_and_process_dataset():
         print("Loading and processing dataset from Hugging Face...")
         dataset = load_dataset('roneneldan/TinyStories', split='train')
 
-        def tokenize_function(examples):
-            # Re-initialize tokenizer within the function for robustness in multiprocessing
-            # init_tokenizer is idempotent, so it won't reload unnecessarily
-            local_tokenizer, _ = init_tokenizer()
-            return local_tokenizer(examples["text"], add_special_tokens=True)
+        def tokenize_function(examples): 
+            tokenizer, _ = init_tokenizer()
+            return {"input_ids": [tokenizer.encode(text, add_special_tokens=True) for text in examples["text"]]}
+
 
         tokenized_dataset = dataset.map(
             tokenize_function,
@@ -93,16 +93,27 @@ def load_and_process_dataset():
         )
         print("Dataset tokenized.")
 
+        # tokenized_dataset.set_format(type='python', columns=['input_ids'])  # <-- This ensures clean structure
+
         def group_texts(examples):
-            concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
-            total_length = len(concatenated_examples[list(examples.keys())[0]])
-            total_length = (total_length // BLOCK_SIZE) * BLOCK_SIZE
-            result = {
-                k: [t[i : i + BLOCK_SIZE] for i in range(0, total_length, BLOCK_SIZE)]
-                for k, t in concatenated_examples.items()
+            # Flatten and add EOS token between samples
+            tokenizer, _ = init_tokenizer()
+            concatenated_ids = []
+            for input_ids in examples["input_ids"]:
+                concatenated_ids += input_ids + [tokenizer.eos_token_id] * 2
+
+            # Truncate to multiple of BLOCK_SIZE
+            total_length = (len(concatenated_ids) // BLOCK_SIZE) * BLOCK_SIZE
+            concatenated_ids = concatenated_ids[:total_length]
+
+            # Chunk into BLOCK_SIZE sequences
+            input_chunks = [concatenated_ids[i:i + BLOCK_SIZE] for i in range(0, total_length, BLOCK_SIZE)]
+
+            return {
+                "input_ids": input_chunks,
+                "labels": input_chunks.copy()
             }
-            result["labels"] = result["input_ids"].copy()
-            return result
+
 
         processed_dataset = tokenized_dataset.map(
             group_texts,
