@@ -10,7 +10,7 @@ NUM_LAYERS = 6
 DROPOUT = 0.1
 
 LEARNING_RATE = 5e-4
-MAX_ITERS = 20000 # Increased for more training
+MAX_ITERS = 50000 # Increased for more training
 
 # Learning Rate Scheduler and Gradient Clipping Parameters
 WARMUP_ITERS = MAX_ITERS//100 # int: Linear LR warmup for first 1% of training
@@ -31,6 +31,9 @@ TOP_P = 0.95
 REPETITION_PENALTY = 1.2
 
 CHECKPOINT_INTERVAL = 1000  # Save model every 1k steps
+CHECKPOINT_PATH = "models/checkpoint.pth"
+MODEL_PATH="models/tinyStoriesLLM.pth"
+TRAINING_LOG_FILE_PATH = os.path.join("src", "analytics", "logs", "training_metrics.csv")
 
 
 # --- Device Configuration ---
@@ -64,6 +67,3 @@ Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deseru
 # --- Tokenizer Configuration ---
 TOKENIZER_MODEL_NAME = 'gpt2'
 VOCAB_SIZE = None # Vocab size will be determined by the pre-trained tokenizer
-
-# --- Model Path ---
-MODEL_PATH = 'models/tinystories_llm_v1.pth' # Updated model path and name
