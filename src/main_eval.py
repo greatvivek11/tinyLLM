@@ -2,10 +2,11 @@ import torch
 import os
 import json
 import argparse
+import os
 from .config import DEVICE, MODEL_PATH, BLOCK_SIZE, EVAL_BATCHES_PERPLEXITY
 from .model import TinyLLM # Keep TinyLLM for type hinting if needed
-from .llm_data import init_tokenizer, decode, load_and_process_dataset, get_batch
-from .utils.llm_utils import test_gemini_connection, get_gemini_model, load_model_and_tokenizer, generate_text_from_model
+from .llm_data import init_tokenizer, decode, load_and_process_dataset, get_batch, VOCAB_SIZE
+from .utils.llm_utils import test_gemini_connection, get_gemini_model, load_model_and_tokenizer, generate_text_from_model, display_model_card
 
 @torch.no_grad()
 def calculate_perplexity(model, val_data):
@@ -117,6 +118,12 @@ def main():
     model, vocab_size = load_model_and_tokenizer()
     if model is None:
         return
+
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Expected model load path: {os.path.abspath(MODEL_PATH)}")
+    
+    # Display model card after successful load
+    display_model_card(model, MODEL_PATH, vocab_size, DEVICE)
 
     if run_all or args.perplexity:
         _, val_data = load_and_process_dataset()

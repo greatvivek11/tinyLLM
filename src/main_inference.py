@@ -4,51 +4,7 @@ import os
 from .config import DEVICE, MODEL_PATH
 from .model import TinyLLM # Keep TinyLLM for type hinting if needed, but loading is now in utils
 from .llm_data import init_tokenizer, encode, decode, VOCAB_SIZE
-from .utils.llm_utils import get_model_size_mb, load_model_and_tokenizer, generate_text_from_model
-
-# ASCII Art Logo for TinyLLM
-TINYLLM_LOGO = r"""
-  _____ _             _     _     __  __ 
- |_   _(_)_ __  _   _| |   | |   |  \/  |
-   | | | | '_ \| | | | |   | |   | |\/| |
-   | | | | | | | |_| | |___| |___| |  | |
-   |_| |_|_| |_|\__, |_____|_____|_|  |_|
-                |___/                    
-"""
-
-def display_model_card(model, model_path, vocab_size, device):
-    """Displays a model card with key details and an example."""
-    print("\n" + "="*50)
-    print(TINYLLM_LOGO)
-    print("                     TinyLLM Model Card")
-    print("="*50)
-    print("\nAbout:")
-    print("  TinyStoriesLLM is a compact language model designed for generating short, coherent stories.")
-    print("  It's trained on a small dataset to demonstrate fundamental LLM capabilities.")
-    print(f"\nModel Details:")
-    print(f"  Vocabulary Size: {vocab_size:,}")
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Parameters: {num_params:,}")
-    model_size_mb = get_model_size_mb(model_path)
-    print(f"  Model File Size: {model_size_mb:.2f} MB")
-    print(f"  Device: {device}")
-
-    print("\nExpected Input/Output Example:")
-    example_prompt = "Once upon a time, there was a little"
-    print(f"  Input Prompt: \"{example_prompt}\"")
-    
-    generated_text = generate_text_from_model(model, example_prompt) # Use default generation parameters
-    if generated_text:
-        # Find the first occurrence of the prompt in the generated text and slice from there
-        start_index = generated_text.find(example_prompt)
-        if start_index != -1:
-            generated_text_display = generated_text[start_index:]
-        else:
-            generated_text_display = generated_text
-        print(f"  Generated Output: \"{generated_text_display}\"")
-    else:
-        print("  (Error generating example.)")
-    print("="*50 + "\n")
+from .utils.llm_utils import get_model_size_mb, load_model_and_tokenizer, generate_text_from_model, display_model_card
 
 
 def main():
