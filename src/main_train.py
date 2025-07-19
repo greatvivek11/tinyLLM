@@ -8,75 +8,58 @@ import matplotlib.pyplot as plt
 import csv
 
 from torch.amp import autocast, GradScaler
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from .config import (
-    BATCH_SIZE,
-    BLOCK_SIZE,
-    CHECKPOINT_PATH,
-    DEVICE,
-    LEARNING_RATE,
-    MAX_ITERS,
-    EVAL_INTERVAL,
-    MODEL_PATH,
-    WARMUP_ITERS,
-    LR_DECAY_ITERS,
-    MIN_LR,
-    GRAD_CLIP,
-    CHECKPOINT_INTERVAL,
-    TRAINING_LOG_FILE_PATH,
-)
+from .config import *
 from .model import TinyLLM
-from .llm_data import (
-    load_and_process_dataset,
-    get_batch,
-    estimate_loss,
-    init_tokenizer,
-    VOCAB_SIZE,
-)
+from .llm_data import *
 from .utils.llm_utils import (
     get_resource_usage,
     format_time,
-)  # Import moved utility functions
+)
 
 best_val_loss = float("inf")
 
 
 # Calculates the learning rate based on the current iteration.
-def get_lr(it):
-    # 1) linear warmup for WARMUP_ITERS steps
+def get_lr(it, optimizer, scheduler):
+    """Unified learning rate strategy:
+    - Linear warmup for first `warmup_iters` steps
+    - CosineAnnealingWarmRestarts thereafter (requires `scheduler.step()` outside)
+    """
     if it < WARMUP_ITERS:
-        return LEARNING_RATE * it / WARMUP_ITERS
-    # 2) if it > LR_DECAY_ITERS, return MIN_LR
-    if it > LR_DECAY_ITERS:
-        return MIN_LR
-    # 3) in between, use cosine decay down to MIN_LR
-    decay_ratio = (it - WARMUP_ITERS) / (LR_DECAY_ITERS - WARMUP_ITERS)
-    assert 0 <= decay_ratio <= 1
-    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 1.0 to 0.0
-    return MIN_LR + coeff * (LEARNING_RATE - MIN_LR)
+        lr = LEARNING_RATE * it / WARMUP_ITERS
+        for group in optimizer.param_groups:
+            group["lr"] = lr
+        return lr
+    else:
+        scheduler.step()
+        return scheduler.get_last_lr()[0]
 
 
-# Sets up the training environment, including model, optimizer, scaler, and checkpoint loading.
+# Sets up the training environment, including model, optimizer, scaler, scheduler, and checkpoint loading.
 def setup_training():
-    """Initializes model, optimizer, scaler, and loads checkpoint if available."""
-    global VOCAB_SIZE  # Ensure VOCAB_SIZE is accessible
-
+    """Initializes model, optimizer, scaler, scheduler, and loads checkpoint if available."""
+    global VOCAB_SIZE
     start_iter = 0
 
     # Initialize tokenizer and get VOCAB_SIZE
     _, VOCAB_SIZE = init_tokenizer()
 
     # Model Instantiation
-    model = TinyLLM(VOCAB_SIZE)
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Model initialized with {num_params:,} parameters.")
-    model.to(DEVICE)
+    model = TinyLLM(VOCAB_SIZE).to(DEVICE)
+    print(
+        f"Model initialized with {sum(p.numel() for p in model.parameters() if p.requires_grad):,} parameters."
+    )
 
     print(f"Current working directory: {os.getcwd()}")
     print(f"Expected checkpoint path: {os.path.abspath(CHECKPOINT_PATH)}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     scaler = GradScaler()
+    scheduler = CosineAnnealingWarmRestarts(
+        optimizer, T_0=2000, T_mult=2, eta_min=MIN_LR
+    )
 
     if os.path.exists(CHECKPOINT_PATH):
         checkpoint = torch.load(
@@ -93,7 +76,7 @@ def setup_training():
                 f"Warning: checkpoint found at {CHECKPOINT_PATH} but missing expected keys. Starting from scratch."
             )
 
-    return model, optimizer, scaler, start_iter
+    return model, optimizer, scaler, scheduler, start_iter
 
 
 # Loads and processes the training and validation datasets.
@@ -149,15 +132,6 @@ def evaluate_and_log(model, train_data, val_data, iter, lr, start_time, iter_tim
     return losses
 
 
-def get_next_versioned_model_path(base_path=MODEL_PATH, ext=".pth"):
-    version = 1
-    while True:
-        candidate = f"{base_path}_v{version}{ext}"
-        if not os.path.exists(candidate):
-            return candidate
-        version += 1
-
-
 # Saves the model, optimizer, and scaler states to a checkpoint file.
 def save_checkpoint(model, scaler, optimizer, iter):
     """Saves the model checkpoint."""
@@ -178,25 +152,25 @@ def save_checkpoint(model, scaler, optimizer, iter):
 
 
 # Executes the main training loop, including forward/backward passes and updates.
-def train_loop(model, optimizer, scaler, train_data, val_data, start_iter):
+def train_loop(model, optimizer, scaler, scheduler, train_data, val_data, start_iter):
     """Main training loop."""
     print(f"\nStarting training on {DEVICE}...")
     start_time = time.time()
-    iter_times = []
-    train_losses, val_losses, perplexities, steps = [], [], [], []
-    token_throughput = []
-    lrs = []
+    lrs, token_throughput, iter_times, train_losses, val_losses, perplexities, steps = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+    )
 
     for iter in range(start_iter, MAX_ITERS):
         # Determine and set the learning rate for the current iteration
-        lr = get_lr(iter)
+        lr = get_lr(iter, optimizer, scheduler)
         lrs.append(lr)
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr
-
         iter_start_time = time.time()
 
-        tokens_processed = (iter - start_iter + 1) * BATCH_SIZE * BLOCK_SIZE
 
         if iter % EVAL_INTERVAL == 0 or iter == MAX_ITERS - 1:
             losses = evaluate_and_log(
@@ -209,6 +183,7 @@ def train_loop(model, optimizer, scaler, train_data, val_data, start_iter):
             val_losses.append(losses["val"].item())
             perplexities.append(perplexity)
             steps.append(iter)
+            tokens_processed = (iter - start_iter + 1) * BATCH_SIZE * BLOCK_SIZE
             elapsed = time.time() - start_time
             tokens_per_sec = tokens_processed / elapsed
             token_throughput.append(tokens_per_sec)
@@ -216,19 +191,28 @@ def train_loop(model, optimizer, scaler, train_data, val_data, start_iter):
             # Log to CSV
             with open(TRAINING_LOG_FILE_PATH, mode="a", newline="") as f:
                 csv.writer(f).writerow(
-                    [iter, losses["train"], losses["val"], perplexity, tokens_per_sec, lr]
+                    [
+                        iter,
+                        losses["train"],
+                        losses["val"],
+                        perplexity,
+                        tokens_per_sec,
+                        lr,
+                    ]
                 )
 
-        xb, yb = get_batch("train", train_data, val_data)
-        with autocast(device_type="cuda"):  # Enables mixed precision
+        xb, yb = get_dynamic_batch("train", train_data, val_data)
+
+        # Enables mixed precision
+        with autocast(device_type="cuda"):
             logits, loss = model(xb, yb)
 
-        optimizer.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)  # Needed for clipping
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
         scaler.step(optimizer)
         scaler.update()
+        optimizer.zero_grad(set_to_none=True)
 
         # Save checkpoint every N steps
         if iter % CHECKPOINT_INTERVAL == 0 or iter == MAX_ITERS - 1:
@@ -251,14 +235,26 @@ def train_loop(model, optimizer, scaler, train_data, val_data, start_iter):
 # Orchestrates the entire training process.
 def main():
     try:
-        with open(TRAINING_LOG_FILE_PATH, mode="w", newline="") as f:
+        # Check if the file exists to decide whether to write headers
+        file_exists = os.path.exists(TRAINING_LOG_FILE_PATH)
+        with open(TRAINING_LOG_FILE_PATH, mode="a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                ["step", "train_loss", "val_loss", "perplexity", "tokens_per_sec", "lr"]
-            )
-        model, optimizer, scaler, start_iter = setup_training()
+            if not file_exists:
+                writer.writerow(
+                    [
+                        "step",
+                        "train_loss",
+                        "val_loss",
+                        "perplexity",
+                        "tokens_per_sec",
+                        "lr",
+                    ]
+                )
+        model, optimizer, scaler, scheduler, start_iter = setup_training()
         train_data, val_data = load_data()
-        train_loop(model, optimizer, scaler, train_data, val_data, start_iter)
+        train_loop(
+            model, optimizer, scaler, scheduler, train_data, val_data, start_iter
+        )
     except KeyboardInterrupt:
         print("\n⛔ Training interrupted. Saving last checkpoint...")
         save_checkpoint(model, scaler, optimizer, start_iter)

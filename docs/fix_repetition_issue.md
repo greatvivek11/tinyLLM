@@ -25,7 +25,7 @@ You are taking the entire logits tensor (of shape [Batch, Time, Vocab_Size]) and
 
 Let's trace the data:
 
-get_batch creates xb (e.g., tokens [0...127]) and yb (tokens [1...128]). This is correct. yb are the targets for xb.
+get_dynamic_batch creates xb (e.g., tokens [0...127]) and yb (tokens [1...128]). This is correct. yb are the targets for xb.
 
 The model's forward pass takes xb as idx.
 
@@ -65,7 +65,7 @@ def forward(self, idx, targets=None):
         # We need to align the logits with the targets.
         # The logit at time step `t` is a prediction for the token at `t+1`.
         # So, we should compare logits[B, t, :] with targets[B, t].
-        # The way your get_batch is structured, `targets` is already idx shifted by one.
+        # The way your get_dynamic_batch is structured, `targets` is already idx shifted by one.
         B, T, C = logits.shape
         logits_for_loss = logits.view(B * T, C)
         targets_for_loss = targets.view(B * T)
@@ -73,7 +73,7 @@ def forward(self, idx, targets=None):
 
     return logits, loss
 ```
-Your get_batch function is already preparing the data correctly by creating x and y where y is x shifted by one token. The original forward pass was the point of error. With this correction, the model will be trained on the proper "next-token prediction" task.
+Your get_dynamic_batch function is already preparing the data correctly by creating x and y where y is x shifted by one token. The original forward pass was the point of error. With this correction, the model will be trained on the proper "next-token prediction" task.
 
 # 2. Tokenizer Choice is Inappropriate
 You're using:

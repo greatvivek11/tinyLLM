@@ -80,7 +80,7 @@ This module encapsulates all functionalities related to data handling:
 
 *   **Tokenizer Initialization**: `init_tokenizer()` loads the pre-trained tokenizer (`gpt2`) and sets the global `VOCAB_SIZE`. It also ensures `tokenizer.pad_token` is set to `tokenizer.eos_token` for consistent padding.
 *   **Encoding/Decoding**: `encode()` and `decode()` functions convert text to token IDs and vice-versa. The `encode` function now uses `add_special_tokens=True` for better compatibility with the `gpt2` tokenizer.
-*   **Batch Generation**: `get_batch()` prepares batches of data for training and evaluation, including a safeguard to ensure data is long enough for `BLOCK_SIZE`.
+*   **Batch Generation**: `get_dynamic_batch()` prepares batches of data for training and evaluation, including a safeguard to ensure data is long enough for `BLOCK_SIZE`.
 *   **Loss Estimation**: `estimate_loss()` evaluates the model's performance on training and validation sets.
 *   **Dataset Loading and Processing**: `load_and_process_dataset()` handles fetching the `TinyStories` dataset, tokenizing it, grouping it into fixed-size blocks, and splitting it into training and validation sets. It uses `num_proc=8` (though often effectively 1 on Windows to avoid multiprocessing issues) and includes the fallback mechanism to hardcoded text if the dataset cannot be loaded.
 

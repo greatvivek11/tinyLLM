@@ -1,4 +1,5 @@
 import os
+import random
 import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer
@@ -51,27 +52,14 @@ def decode(l):
     return _tokenizer.decode(l, skip_special_tokens=True)
 
 
-def get_batch(split, train_data, val_data):
+def get_dynamic_batch(split, train_data, val_data, min_len=64, max_len=BLOCK_SIZE):
+    context_len = random.choice([64, 128, 256, 384, 512])
     data = train_data if split == "train" else val_data
-
-    if isinstance(data, torch.Tensor):  # Handle fallback text (raw tensor)
-        # Safeguard against data being smaller than BLOCK_SIZE + 1
-        if len(data) < BLOCK_SIZE + 1:
-            print(f"Warning: '{split}' data is too short. Repeating.")
-            # Repeat the data to make it long enough
-            data = data.repeat((BLOCK_SIZE + 1) // len(data) + 1)
-        # For raw tensor, we need to ensure we don't go out of bounds when slicing
-        ix = torch.randint(len(data) - BLOCK_SIZE, (BATCH_SIZE,))
-        x = torch.stack([data[i : i + BLOCK_SIZE] for i in ix])
-        y = torch.stack([data[i + 1 : i + BLOCK_SIZE + 1] for i in ix])
-    else:
-        ix = torch.randint(len(data), (BATCH_SIZE,))
-        batch_items = [data[i.item()] for i in ix]
-        x_full = torch.stack([item["input_ids"] for item in batch_items])
-        x = x_full[:, :-1].contiguous()
-        y = x_full[:, 1:].contiguous()
-
-    return x.to(DEVICE), y.to(DEVICE)
+    ix = torch.randint(len(data) - context_len, (BATCH_SIZE,))
+    x = torch.stack([data[i : i + context_len] for i in ix])
+    y = torch.stack([data[i + 1 : i + 1 + context_len] for i in ix])
+    x, y = x.to(DEVICE), y.to(DEVICE)
+    return x, y
 
 
 @torch.no_grad()
@@ -81,7 +69,7 @@ def estimate_loss(model, train_data, val_data):
     for split in ["train", "val"]:
         losses = torch.zeros(EVAL_ITERS)
         for k in range(EVAL_ITERS):
-            X, Y = get_batch(split, train_data, val_data)
+            X, Y = get_dynamic_batch(split, train_data, val_data)
             _, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()

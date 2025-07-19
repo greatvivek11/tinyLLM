@@ -2,15 +2,15 @@ import torch
 import os
 
 # --- Configuration Parameters ---
-BLOCK_SIZE = 256
+BLOCK_SIZE = 512
 BATCH_SIZE = 64
-D_MODEL = 128
-NUM_HEADS = 4
-NUM_LAYERS = 6
+D_MODEL = 384
+NUM_HEADS = 6
+NUM_LAYERS = 12
 DROPOUT = 0.1
 
 LEARNING_RATE = 5e-4
-MAX_ITERS = 50000 # Increased for more training
+MAX_ITERS = 10000 # Increased for more training
 
 # Learning Rate Scheduler and Gradient Clipping Parameters
 WARMUP_ITERS = MAX_ITERS//100 # int: Linear LR warmup for first 1% of training
